@@ -1,0 +1,2 @@
+# multiClipBoard
+Multiple numbered clipboards
