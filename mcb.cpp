@@ -1,6 +1,4 @@
 #include <iostream>
-#include <chrono>
-#include <thread>
 
 #include "Windows.h"
 
@@ -10,7 +8,7 @@
 // Does what it says. Duh.
 char* readClipboard(void) {
     while(!OpenClipboard(NULL)) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        Sleep(100);
     }
 
     HANDLE clipboardHandle = 0;
@@ -20,7 +18,7 @@ char* readClipboard(void) {
     }
 
     char* clipboardText = NULL;
-    clipboardText = (char*)GlobalLock(clipboardHandle);
+    clipboardText = static_cast<char*>(GlobalLock(clipboardHandle));
 	GlobalUnlock(clipboardHandle);
 	CloseClipboard();
 
@@ -33,7 +31,7 @@ char* readClipboard(void) {
 
 // Does what it says. Duh.
 unsigned int writeClipboard(char clipboardText[]) {
-    size_t len = strlen(clipboardText) + 1;
+    size_t len = strlen(clipboardText)+1;
     HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, len);
 
     #ifdef TEST_VERSION
@@ -44,7 +42,7 @@ unsigned int writeClipboard(char clipboardText[]) {
     GlobalUnlock(hMem);
 
     while(!OpenClipboard(NULL)) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        Sleep(100);
     }
 
     EmptyClipboard();
@@ -128,7 +126,7 @@ unsigned int pressOriginalKey(int hotkeyID, WORD vk) {
 
     // If we don't sleep here the clipboard doesn't change.
     // Note: Find the optimal value for this!
-    std::this_thread::sleep_for(std::chrono::milliseconds(75));
+    Sleep(75);
     return 0;
 }
 
@@ -209,7 +207,7 @@ unsigned int main(void) {
                 } else {
                     usedSlots[number] = true;
                 }
-                clipboardSlots[number] = (char*)malloc(strlen(newSlotBuf)+1);
+                clipboardSlots[number] = static_cast<char*>(malloc(strlen(newSlotBuf)+1));
                 strcpy(clipboardSlots[number], newSlotBuf);
 
                 #ifdef TEST_VERSION
