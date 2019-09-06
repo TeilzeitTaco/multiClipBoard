@@ -137,8 +137,8 @@ unsigned int pressOriginalKey(int hotkeyID, WORD vk) {
 }
 
 unsigned int main(void) {
+    // This array holds our clipboard strings
     char* clipboardSlots[9] = {0};
-    bool usedSlots[9] = {false}; // This array is used to tell which slots already have content
 
     #ifndef TEST_VERSION
     if (hideWindow() == ERROR_VAL) { return 1; }
@@ -208,10 +208,11 @@ unsigned int main(void) {
                 newSlotBuf = readClipboard();
 
                 // Free memory if the slot was previously used
-                if (usedSlots[number]) {
+                if (clipboardSlots[number]) {
+                    #ifdef TEST_VERSION
+                    std::cout << "Freeing slot..." << std::endl;
+                    #endif
                     free(clipboardSlots[number]);
-                } else {
-                    usedSlots[number] = true;
                 }
                 clipboardSlots[number] = static_cast<char*>(malloc(strlen(newSlotBuf)+1));
                 strcpy(clipboardSlots[number], newSlotBuf);
@@ -236,7 +237,7 @@ unsigned int main(void) {
                 }
 
                 // Nothing to paste.
-                if (!usedSlots[number]) { break; }
+                if (!clipboardSlots[number]) { break; }
 
                 // Save current clipboard to restore it later
                 clipboardRestoreBuf = readClipboard();
