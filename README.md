@@ -18,7 +18,7 @@ Due to the technology this program uses, some Antivirus programs may detect it a
 
 For best results, you may press *CTRL* and any number key and then add the *C*, *X*, or *V* key.
 
-Also, this program breaks any program using *CTRL+number key* hotkeys. For example, Firefox' tab shortcuts won't be available.
+Also, this program affects any program using *CTRL+number key* hotkeys. You may have to press and hold the hotkey for a few seconds to see a effect.
 
 ## Copyright:
 TeilzeitTaco, 2019. MIT license.

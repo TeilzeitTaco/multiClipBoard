@@ -5,7 +5,7 @@
 #define ERROR_VAL (unsigned int) -1
 
 // Note: Maybe we want to switch to pure win32 prints.
-#ifdef TEST_VERSION
+// #ifdef TEST_VERSION
 #include <iostream>
 #endif
 
@@ -28,11 +28,15 @@ char* readClipboard(void) {
 	GlobalUnlock(clipboardHandle);
 	CloseClipboard();
 
+    char* returnedBuffer = NULL;
+    returnedBuffer = static_cast<char*>(malloc(strlen(clipboardText)+1));
+    strcpy(returnedBuffer, clipboardText);
+
     #ifdef TEST_VERSION
-    std::cout << "Reading string from clipboard: " << clipboardText << std::endl;
+    std::cout << "Reading string from clipboard: " << returnedBuffer << std::endl;
     #endif
 
-    return clipboardText;
+    return returnedBuffer;
 }
 
 // Does what it says. Duh.
@@ -127,7 +131,7 @@ unsigned int pressOriginalKey(int hotkeyID, WORD vk) {
     SendInput(1, &ip, sizeof(INPUT));
 
     // Re-enable hotkey and input.
-    if (!RegisterHotKey(NULL, hotkeyID, MOD_CONTROL | MOD_NOREPEAT, vk)) { return -1; }
+    if (!RegisterHotKey(NULL, hotkeyID, MOD_CONTROL, vk)) { return -1; }
     BlockInput(false);
 
     // If we don't sleep here the clipboard doesn't change.
@@ -137,17 +141,17 @@ unsigned int pressOriginalKey(int hotkeyID, WORD vk) {
 }
 
 unsigned int main(void) {
-    char* clipboardSlots[9] = {0};
-    bool usedSlots[9] = {false}; // This array is used to tell which slots already have content
+    char* clipboardSlots[10] = {0}; // This array holds our clipboard strings
+    bool usedSlots[10] = {false};   // This array is used to tell which slots already have content
 
     #ifndef TEST_VERSION
     if (hideWindow() == ERROR_VAL) { return 1; }
     #endif
 
     // Register CTRL+C/X/V hotkeys..
-    if (!RegisterHotKey(NULL, 1, MOD_CONTROL | MOD_NOREPEAT, 0x43)) { return 1; }
-    if (!RegisterHotKey(NULL, 2, MOD_CONTROL | MOD_NOREPEAT, 0x58)) { return 1; }
-    if (!RegisterHotKey(NULL, 3, MOD_CONTROL | MOD_NOREPEAT, 0x56)) { return 1; }
+    if (!RegisterHotKey(NULL, 1, MOD_CONTROL, 0x43)) { return 1; }
+    if (!RegisterHotKey(NULL, 2, MOD_CONTROL, 0x58)) { return 1; }
+    if (!RegisterHotKey(NULL, 3, MOD_CONTROL, 0x56)) { return 1; }
 
     #ifdef TEST_VERSION
     std::cout << "C/X/V Hotkeys created." << std::endl;
@@ -155,7 +159,7 @@ unsigned int main(void) {
 
     // Create number hotkeys.
     for (size_t i = 0x30; i < 0x40; i++) {
-        if (!RegisterHotKey(NULL, i, MOD_CONTROL | MOD_NOREPEAT, i)) { return 1; }
+        if (!RegisterHotKey(NULL, i, MOD_CONTROL, i)) { return 1; }
     }
 
     #ifdef TEST_VERSION
@@ -165,6 +169,7 @@ unsigned int main(void) {
     MSG msg = {0};
     char* newSlotBuf = 0;
     char* clipboardRestoreBuf = 0;
+    unsigned char numberHotkeyFallthrough = 0;
     while (GetMessage(&msg, NULL, 0, 0) != 0) {
         if (msg.message == WM_HOTKEY) {
             #ifdef TEST_VERSION
@@ -174,7 +179,37 @@ unsigned int main(void) {
             unsigned int number = getNumber();
             switch(msg.lParam) {
                 ////////////////////////////////////////////////////////////////
-                case 5767170:
+                case 3211266:
+                case 3276802:
+                case 3342338:
+                case 3407874:
+                case 3473410:
+                case 3538946:
+                case 3604482:
+                case 3670018:
+                case 3735554:
+                case 3145730:
+
+                #ifdef TEST_VERSION
+                std::cout << "Increasing fallthrough counter to " << static_cast<int>(numberHotkeyFallthrough)+1 << std::endl;
+                #endif
+
+                if (numberHotkeyFallthrough < 20) {
+                   numberHotkeyFallthrough++;
+                   break;
+                }
+
+                #ifdef TEST_VERSION
+                std::cout << "Number hotkey fallthrough triggered!" << std::endl;
+                std::cout << "Hotkey ID: " << (msg.lParam >> 16) << std::endl;
+                #endif
+
+                numberHotkeyFallthrough = 0;
+                pressOriginalKey((msg.lParam >> 16), (msg.lParam >> 16));
+                break;
+
+                ////////////////////////////////////////////////////////////////
+                case 5767170: // CTRL+V lParam int
                 case 4390914: // CTRL+C lParam int
                 #ifdef TEST_VERSION
                 if (msg.lParam == 4390914) {
@@ -185,6 +220,7 @@ unsigned int main(void) {
                 #endif
 
                 // No number key pressed, just simulate a normal keypress.
+                numberHotkeyFallthrough = 0;
                 if (number == ERROR_VAL) {
                     if (msg.lParam == 4390914) {
                         if (pressOriginalKey(1, 0x43) == ERROR_VAL) { return 1; } // Ctrl+C
@@ -209,6 +245,10 @@ unsigned int main(void) {
 
                 // Free memory if the slot was previously used
                 if (usedSlots[number]) {
+                    #ifdef TEST_VERSION
+                    std::cout << "Freeing slots..." << std::endl;
+                    #endif
+
                     free(clipboardSlots[number]);
                 } else {
                     usedSlots[number] = true;
@@ -222,6 +262,7 @@ unsigned int main(void) {
 
                 // Restore the old clipboard
                 writeClipboard(clipboardRestoreBuf);
+                free(clipboardRestoreBuf);
                 break;
 
                 ////////////////////////////////////////////////////////////////
@@ -230,6 +271,7 @@ unsigned int main(void) {
                 std::cout << "Ctrl+V and " << number << std::endl;
                 #endif
 
+                numberHotkeyFallthrough = 0;
                 if (number == ERROR_VAL) {
                     if (pressOriginalKey(3, 0x56) == ERROR_VAL) { return 1; }
                     break;
@@ -247,6 +289,7 @@ unsigned int main(void) {
 
                 // Restore the old clipboard
                 writeClipboard(clipboardRestoreBuf);
+                free(clipboardRestoreBuf);
                 break;
             }
         }
