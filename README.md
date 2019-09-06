@@ -13,7 +13,12 @@
 
 ## Notes:
 This is a proof of concept. Sometimes it doesn't detect keypresses right, I am working on it.
+
 Due to the technology this program uses, some Antivirus programs may detect it as malware.
+
+For best results, you may press *CTRL* and any number key and then add the *C*, *X*, or *V* key.
+
+Also, this program breaks any program using *CTRL+number key* hotkeys. For example, Firefox' tab shortcuts won't be available.
 
 ## Copyright:
 TeilzeitTaco, 2019. MIT license.
