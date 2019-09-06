@@ -1,11 +1,11 @@
 // MultiClipBoard software, 2019, TeilzeitTaco
 // Licensed under the MIT license
 
-#define TEST_VERSION
+// #define TEST_VERSION
 #define ERROR_VAL (unsigned int) -1
 
 // Note: Maybe we want to switch to pure win32 prints.
-// #ifdef TEST_VERSION
+#ifdef TEST_VERSION
 #include <iostream>
 #endif
 
