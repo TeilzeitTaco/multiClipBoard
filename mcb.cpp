@@ -1,242 +1,248 @@
-// MultiClipBoard software, 2019, TeilzeitTaco
-// Licensed under the MIT license
-
 #include <iostream>
+#include <chrono>
+#include <thread>
+
 #include "Windows.h"
 
-#define TEST_VERSION
+//#define TEST_VERSION
+#define ERROR_VAL (unsigned int) -1
 
-// Hide the console window
-void hideWindow() {
+// Does what it says. Duh.
+char* readClipboard(void) {
+    while(!OpenClipboard(NULL)) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
+    HANDLE clipboardHandle = 0;
+    clipboardHandle = GetClipboardData(CF_TEXT);
+    if (clipboardHandle == NULL) {
+        return NULL;
+    }
+
+    char* clipboardText = NULL;
+    clipboardText = (char*)GlobalLock(clipboardHandle);
+	GlobalUnlock(clipboardHandle);
+	CloseClipboard();
+
+    #ifdef TEST_VERSION
+    std::cout << "Reading string from clipboard: " << clipboardText << std::endl;
+    #endif
+
+    return clipboardText;
+}
+
+// Does what it says. Duh.
+unsigned int writeClipboard(char clipboardText[]) {
+    size_t len = strlen(clipboardText) + 1;
+    HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, len);
+
+    #ifdef TEST_VERSION
+    std::cout << "Writing string to clipboard: " << clipboardText << std::endl;
+    #endif
+
+    memcpy(GlobalLock(hMem), clipboardText, len);
+    GlobalUnlock(hMem);
+
+    while(!OpenClipboard(NULL)) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
+    EmptyClipboard();
+    if (!SetClipboardData(CF_TEXT, hMem)) { return -1; }
+    CloseClipboard();
+    return 0;
+}
+
+// Does what it says.
+unsigned int hideWindow(void) {
     HWND consoleWindow = NULL;
 
     AllocConsole();
     consoleWindow = FindWindow("ConsoleWindowClass", NULL);
-    ShowWindow(consoleWindow, SW_HIDE);
+    if (consoleWindow == NULL) {
+        return -1;
+    }
 
-    return;
+    ShowWindow(consoleWindow, SW_HIDE);
+    return 0;
 }
 
-// Check if any number keys are pressed right now.
-unsigned int getNumberKey(void) {
-    // Number keys are 0x30 to 0x39...
-    for (size_t i = 0x30; i < 0x40; i++) {
+// Check if any number keys are pressed.
+unsigned int getNumber(void) {
+    // 0x30 to 0x39 are normal number keys.
+    for (unsigned int i = 0x30; i < 0x40; i++) {
         if (GetAsyncKeyState(i) != 0) {
             return (i-0x30);
         }
     }
 
-    // ...numpad keys are 0x60 to 0x69.
-    for (size_t i = 0x60; i < 0x70; i++) {
+    // 0x60 to 0x69 are numpad keys.
+    for (unsigned int i = 0x60; i < 0x70; i++) {
         if (GetAsyncKeyState(i) != 0) {
             return (i-0x60);
         }
     }
 
-    // Nothing, use default.
     return -1;
 }
 
-int main(void) {
+// This function is called when we want to use the vanilla CTRl+C/X/V.
+// It disables the associated hotkey, simulates a keypress and re-enables
+// the hotkey. Pretty neat if you ask me!
+unsigned int pressOriginalKey(int hotkeyID, WORD vk) {
     unsigned int result = 0;
-    unsigned int slot = 0;
-    INPUT ip[1];
+
+    // Temporarly disable hotkey and block user input.
+    if (!UnregisterHotKey(NULL, hotkeyID)) { return -1; }
+    BlockInput(true);
+
+    INPUT ip;
+    ip.type = INPUT_KEYBOARD;
+    ip.ki.wScan = 0;
+    ip.ki.time = 0;
+    ip.ki.dwExtraInfo = 0;
+
+    // Press the "Ctrl" key.
+    ip.ki.wVk = VK_CONTROL;
+    ip.ki.dwFlags = 0;
+    SendInput(1, &ip, sizeof(INPUT));
+
+    // Press the specified key.
+    ip.ki.wVk = vk;
+    ip.ki.dwFlags = 0;
+    SendInput(1, &ip, sizeof(INPUT));
+
+    // Release the specified key.
+    ip.ki.wVk = vk;
+    ip.ki.dwFlags = KEYEVENTF_KEYUP;
+    SendInput(1, &ip, sizeof(INPUT));
+
+    // Release the "Ctrl" key.
+    ip.ki.wVk = VK_CONTROL;
+    ip.ki.dwFlags = KEYEVENTF_KEYUP;
+    SendInput(1, &ip, sizeof(INPUT));
+
+    // Re-enable hotkey and input.
+    if (!RegisterHotKey(NULL, hotkeyID, MOD_CONTROL | MOD_NOREPEAT, vk)) { return -1; }
+    BlockInput(false);
+
+    // If we don't sleep here the clipboard doesn't change.
+    // Note: Find the optimal value for this!
+    std::this_thread::sleep_for(std::chrono::milliseconds(75));
+    return 0;
+}
+
+unsigned int main(void) {
+    char* clipboardSlots[9] = {0};
+    bool usedSlots[9] = {false}; // This array is used to tell which slots already have content
 
     #ifndef TEST_VERSION
-    hideWindow();
+    if (hideWindow() == ERROR_VAL) { return 1; }
     #endif
 
-    // Register CTRL+C hotkey.
-    result = RegisterHotKey(NULL, 1, MOD_CONTROL, 0x43);
-    if (result == 0) {
-        return 1;
+    // Register CTRL+C/X/V hotkeys..
+    if (!RegisterHotKey(NULL, 1, MOD_CONTROL | MOD_NOREPEAT, 0x43)) { return 1; }
+    if (!RegisterHotKey(NULL, 2, MOD_CONTROL | MOD_NOREPEAT, 0x58)) { return 1; }
+    if (!RegisterHotKey(NULL, 3, MOD_CONTROL | MOD_NOREPEAT, 0x56)) { return 1; }
+
+    #ifdef TEST_VERSION
+    std::cout << "C/X/V Hotkeys created." << std::endl;
+    #endif
+
+    // Create number hotkeys.
+    for (size_t i = 0x30; i < 0x40; i++) {
+        if (!RegisterHotKey(NULL, i, MOD_CONTROL | MOD_NOREPEAT, i)) { return 1; }
     }
 
-    // Register CTRL+X hotkey.
-    result = RegisterHotKey(NULL, 2, MOD_CONTROL, 0x58);
-    if (result == 0) {
-        return 1;
-    }
-
-    // Register CTRL+V hotkey.
-    result = RegisterHotKey(NULL, 3, MOD_CONTROL, 0x56);
-    if (result == 0) {
-        return 1;
-    }
+    #ifdef TEST_VERSION
+    std::cout << "Number hotkeys created." << std::endl;
+    #endif
 
     MSG msg = {0};
+    char* newSlotBuf = 0;
+    char* clipboardRestoreBuf = 0;
     while (GetMessage(&msg, NULL, 0, 0) != 0) {
         if (msg.message == WM_HOTKEY) {
+            #ifdef TEST_VERSION
+            std::cout << "Processing lParam: " << msg.lParam << std::endl;
+            #endif
+
+            unsigned int number = getNumber();
             switch(msg.lParam) {
                 ////////////////////////////////////////////////////////////////
+                case 5767170:
                 case 4390914: // CTRL+C lParam int
                 #ifdef TEST_VERSION
-                std::cout << "CTRL+C triggered" << std::endl;
+                if (msg.lParam == 4390914) {
+                    std::cout << "Ctrl+C and " << number << std::endl;
+                } else {
+                    std::cout << "Ctrl+X and " << number << std::endl;
+                }
                 #endif
 
-                // PROCESS:
-                // 1. Check if any number keys are pressed
-                // 2. Safe current default keyboard content
-                // 3. Temporarly unregister hotkeys
-                // 4. Send simulated CTRL+C keypress
-                // 5. Re-register hotkeys
-                // 6. Copy new clipboard to number buffer
-                // 7. Restore old clipboard
-
-                // Step 1:
-                slot = getNumberKey();
-                #ifdef TEST_VERSION
-                std::cout << "Slot selected: " << slot << std::endl;
-                #endif
-
-                // Step 3:
-                result = UnregisterHotKey(NULL, 1);
-                if (result == 0) {
-                    return 1;
+                // No number key pressed, just simulate a normal keypress.
+                if (number == ERROR_VAL) {
+                    if (msg.lParam == 4390914) {
+                        if (pressOriginalKey(1, 0x43) == ERROR_VAL) { return 1; } // Ctrl+C
+                    } else {
+                        if (pressOriginalKey(2, 0x58) == ERROR_VAL) { return 1; } // Ctrl+X
+                    }
+                    break;
                 }
 
-                // Step 4:
-                ip[0].type = INPUT_KEYBOARD;
-                ip[0].ki.wVk = VK_CONTROL;
-                ip[0].ki.dwFlags = 0;
-                ip[1].type = INPUT_KEYBOARD;
-                ip[1].ki.wVk = 0x43;
-                ip[1].ki.dwFlags = 0;
-                result = SendInput(2, ip, sizeof(ip));
-                if (result != 2) {
-                    return 2;
+                // Save current clipboard to restore it later
+                clipboardRestoreBuf = readClipboard();
+
+                // Simulate keypress
+                if (msg.lParam == 4390914) {
+                    if (pressOriginalKey(1, 0x43) == ERROR_VAL) { return 1; } // Ctrl+C
+                } else {
+                    if (pressOriginalKey(2, 0x58) == ERROR_VAL) { return 1; } // Ctrl+X
                 }
 
-                ip[0].ki.dwFlags = KEYEVENTF_KEYUP;
-                ip[1].ki.dwFlags = KEYEVENTF_KEYUP;
-                result = SendInput(2, ip, sizeof(ip));
-                if (result != 2) {
-                    return 2;
-                }
+                // Read the result
+                newSlotBuf = readClipboard();
 
-                // Step 5:
-                result = RegisterHotKey(NULL, 1, MOD_CONTROL, 0x43);
-                if (result == 0) {
-                    return 1;
+                // Free memory if the slot was previously used
+                if (usedSlots[number]) {
+                    free(clipboardSlots[number]);
+                } else {
+                    usedSlots[number] = true;
                 }
+                clipboardSlots[number] = (char*)malloc(strlen(newSlotBuf)+1);
+                strcpy(clipboardSlots[number], newSlotBuf);
 
                 #ifdef TEST_VERSION
-                std::cout << "Done processing keypress." << std::endl << std::endl;
-                #endif
-                break;
-
-                ////////////////////////////////////////////////////////////////
-                case 5767170: // CTRL+X lParam int
-                #ifdef TEST_VERSION
-                std::cout << "CTRL+X triggered" << std::endl;
+                std::cout << "Slot now contains: " << clipboardSlots[number] << std::endl;
                 #endif
 
-                // PROCESS:
-                // 1. Check if any number keys are pressed
-                // 2. Safe current default keyboard content
-                // 3. Temporarly unregister hotkeys
-                // 4. Send simulated CTRL+X keypress
-                // 5. Re-register hotkeys
-                // 6. Copy new clipboard to number buffer
-                // 7. Restore old clipboard
-
-                // Step 1:
-                slot = getNumberKey();
-                #ifdef TEST_VERSION
-                std::cout << "Slot selected: " << slot << std::endl;
-                #endif
-
-                // Step 3:
-                result = UnregisterHotKey(NULL, 2);
-                if (result == 0) {
-                    return 1;
-                }
-
-                // Step 4:
-                ip[0].type = INPUT_KEYBOARD;
-                ip[0].ki.wVk = VK_CONTROL;
-                ip[0].ki.dwFlags = 0;
-                ip[1].type = INPUT_KEYBOARD;
-                ip[1].ki.wVk = 0x58;
-                ip[1].ki.dwFlags = 0;
-                result = SendInput(2, ip, sizeof(ip));
-                if (result != 2) {
-                    return 2;
-                }
-
-                ip[0].ki.dwFlags = KEYEVENTF_KEYUP;
-                ip[1].ki.dwFlags = KEYEVENTF_KEYUP;
-                result = SendInput(2, ip, sizeof(ip));
-                if (result != 2) {
-                    return 2;
-                }
-
-                // Step 5:
-                result = RegisterHotKey(NULL, 2, MOD_CONTROL, 0x58);
-                if (result == 0) {
-                    return 1;
-                }
-
-                #ifdef TEST_VERSION
-                std::cout << "Done processing keypress." << std::endl << std::endl;
-                #endif
+                // Restore the old clipboard
+                writeClipboard(clipboardRestoreBuf);
                 break;
 
                 ////////////////////////////////////////////////////////////////
                 case 5636098: // CTRL+V lParam int
                 #ifdef TEST_VERSION
-                std::cout << "CTRL+V triggered" << std::endl;
+                std::cout << "Ctrl+V and " << number << std::endl;
                 #endif
 
-                // PROCESS:
-                // 1. Check if any number keys are pressed
-                // 2. Safe current default keyboard content
-                // 3. Set keyboard to number buffer
-                // 4. Temporarly unregister hotkeys
-                // 5. Send simulated CTRL+V keypress
-                // 6. Re-register hotkeys
-                // 7. Restore old clipboard
-
-                // Step 1:
-                slot = getNumberKey();
-                #ifdef TEST_VERSION
-                std::cout << "Slot selected: " << slot << std::endl;
-                #endif
-
-                // Step 3:
-                result = UnregisterHotKey(NULL, 3);
-                if (result == 0) {
-                    return 1;
+                if (number == ERROR_VAL) {
+                    if (pressOriginalKey(3, 0x56) == ERROR_VAL) { return 1; }
+                    break;
                 }
 
-                // Step 4:
-                ip[0].type = INPUT_KEYBOARD;
-                ip[0].ki.wVk = VK_CONTROL;
-                ip[0].ki.dwFlags = 0;
-                ip[1].type = INPUT_KEYBOARD;
-                ip[1].ki.wVk = 0x56;
-                ip[1].ki.dwFlags = 0;
-                result = SendInput(2, ip, sizeof(ip));
-                if (result != 2) {
-                    return 2;
-                }
+                // Nothing to paste.
+                if (!usedSlots[number]) { break; }
 
-                ip[0].ki.dwFlags = KEYEVENTF_KEYUP;
-                ip[1].ki.dwFlags = KEYEVENTF_KEYUP;
-                result = SendInput(2, ip, sizeof(ip));
-                if (result != 2) {
-                    return 2;
-                }
+                // Save current clipboard to restore it later
+                clipboardRestoreBuf = readClipboard();
 
-                // Step 5:
-                result = RegisterHotKey(NULL, 3, MOD_CONTROL, 0x56);
-                if (result == 0) {
-                    return 1;
-                }
+                // Write slot contents to clipboard and paste it.
+                writeClipboard(clipboardSlots[number]);
+                if (pressOriginalKey(3, 0x56) == ERROR_VAL) { return 1; }
 
-                #ifdef TEST_VERSION
-                std::cout << "Done processing keypress." << std::endl << std::endl;
-                #endif
+                // Restore the old clipboard
+                writeClipboard(clipboardRestoreBuf);
                 break;
             }
         }
