@@ -5,6 +5,11 @@
 #define TEST_VERSION
 #define ERROR_VAL static_cast<unsigned int>(-1)
 
+// You may want to tweak this according to your needs.
+// If it is higher, it will take longer until a number hotkey
+// is triggered.
+#define FALLTROUGH_DELAY 25
+
 // Note: Maybe we want to switch to pure win32 prints.
 #ifdef TEST_VERSION
 #include <iostream>
@@ -134,7 +139,7 @@ unsigned int pressOriginalKey(int hotkeyID, WORD vk) {
 
     // If we don't sleep here the clipboard doesn't change.
     // Note: Find the optimal value for this!
-    Sleep(50);
+    Sleep(100);
     return 0;
 }
 
@@ -198,7 +203,7 @@ unsigned int main(void) {
                     countingWithlParam = msg.lParam;
                 }
 
-                if (numberHotkeyFallthrough < 20) {
+                if (numberHotkeyFallthrough < FALLTROUGH_DELAY) {
                     #ifdef TEST_VERSION
                     std::cout << "Increasing fallthrough counter to " << static_cast<int>(numberHotkeyFallthrough)+1 << std::endl;
                     #endif
