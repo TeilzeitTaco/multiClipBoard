@@ -3,7 +3,7 @@
 // Compile with: "cl /EHsc mcb.cpp User32.lib"
 
 #define TEST_VERSION
-#define ERROR_VAL 4294967295
+#define ERROR_VAL static_cast<unsigned int>(-1)
 
 // Note: Maybe we want to switch to pure win32 prints.
 #ifdef TEST_VERSION
@@ -15,7 +15,7 @@
 // Does what it says. Duh.
 char* readClipboard(void) {
     while(!OpenClipboard(NULL)) {
-        Sleep(100);
+        Sleep(50);
     }
 
     HANDLE clipboardHandle = 0;
@@ -51,7 +51,7 @@ unsigned int writeClipboard(char clipboardText[]) {
     GlobalUnlock(hMem);
 
     while(!OpenClipboard(NULL)) {
-        Sleep(100);
+        Sleep(50);
     }
 
     EmptyClipboard();
@@ -64,7 +64,7 @@ unsigned int writeClipboard(char clipboardText[]) {
 unsigned int hideWindow(void) {
     HWND consoleWindow = NULL;
 
-    AllocConsole();
+    AllocConsole(); // Allocate console if we don't already have one.
     consoleWindow = FindWindow("ConsoleWindowClass", NULL);
     if (consoleWindow == NULL) { return -1; }
 
@@ -101,6 +101,7 @@ unsigned int pressOriginalKey(int hotkeyID, WORD vk) {
     if (!UnregisterHotKey(NULL, hotkeyID)) { return -1; }
     BlockInput(true);
 
+    // Inject keypresses
     INPUT ip;
     ip.type = INPUT_KEYBOARD;
     ip.ki.wScan = 0;
@@ -133,7 +134,7 @@ unsigned int pressOriginalKey(int hotkeyID, WORD vk) {
 
     // If we don't sleep here the clipboard doesn't change.
     // Note: Find the optimal value for this!
-    Sleep(75);
+    Sleep(50);
     return 0;
 }
 
@@ -202,8 +203,8 @@ unsigned int main(void) {
                     std::cout << "Increasing fallthrough counter to " << static_cast<int>(numberHotkeyFallthrough)+1 << std::endl;
                     #endif
 
-                   numberHotkeyFallthrough++;
-                   break;
+                    numberHotkeyFallthrough++;
+                    break;
                 }
 
                 #ifdef TEST_VERSION
@@ -213,6 +214,8 @@ unsigned int main(void) {
 
                 // Here we detect if the user holds down a number hotkey.
                 // If he does for long enough, we simulate a real hotkey press.
+                // This is pretty much only so we can copy text from browsers
+                // while still allowing the use of normal hotkeys.
 
                 numberHotkeyFallthrough = 0;
                 pressOriginalKey((msg.lParam >> 16), (msg.lParam >> 16));
