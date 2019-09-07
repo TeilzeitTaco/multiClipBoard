@@ -1,8 +1,9 @@
 // MultiClipBoard software, 2019, TeilzeitTaco
 // Licensed under the MIT license
+// Compile with: "cl /EHsc mcb.cpp User32.lib"
 
-// #define TEST_VERSION
-#define ERROR_VAL (unsigned int) -1
+#define TEST_VERSION
+#define ERROR_VAL 4294967295
 
 // Note: Maybe we want to switch to pure win32 prints.
 #ifdef TEST_VERSION
@@ -19,9 +20,7 @@ char* readClipboard(void) {
 
     HANDLE clipboardHandle = 0;
     clipboardHandle = GetClipboardData(CF_TEXT);
-    if (clipboardHandle == NULL) {
-        return NULL;
-    }
+    if (clipboardHandle == NULL) { return NULL; }
 
     char* clipboardText = NULL;
     clipboardText = static_cast<char*>(GlobalLock(clipboardHandle));
@@ -67,9 +66,7 @@ unsigned int hideWindow(void) {
 
     AllocConsole();
     consoleWindow = FindWindow("ConsoleWindowClass", NULL);
-    if (consoleWindow == NULL) {
-        return -1;
-    }
+    if (consoleWindow == NULL) { return -1; }
 
     ShowWindow(consoleWindow, SW_HIDE);
     return 0;
@@ -170,6 +167,7 @@ unsigned int main(void) {
     char* newSlotBuf = 0;
     char* clipboardRestoreBuf = 0;
     unsigned char numberHotkeyFallthrough = 0;
+    unsigned int countingWithlParam = 0;
     while (GetMessage(&msg, NULL, 0, 0) != 0) {
         if (msg.message == WM_HOTKEY) {
             #ifdef TEST_VERSION
@@ -190,11 +188,20 @@ unsigned int main(void) {
                 case 3735554:
                 case 3145730:
 
-                #ifdef TEST_VERSION
-                std::cout << "Increasing fallthrough counter to " << static_cast<int>(numberHotkeyFallthrough)+1 << std::endl;
-                #endif
+                if ((msg.lParam != countingWithlParam) || (countingWithlParam == 0)) {
+                    #ifdef TEST_VERSION
+                    std::cout << "Setting new countingWithlParam." << std::endl;
+                    #endif
+
+                    numberHotkeyFallthrough = 0;
+                    countingWithlParam = msg.lParam;
+                }
 
                 if (numberHotkeyFallthrough < 20) {
+                    #ifdef TEST_VERSION
+                    std::cout << "Increasing fallthrough counter to " << static_cast<int>(numberHotkeyFallthrough)+1 << std::endl;
+                    #endif
+
                    numberHotkeyFallthrough++;
                    break;
                 }
@@ -203,6 +210,9 @@ unsigned int main(void) {
                 std::cout << "Number hotkey fallthrough triggered!" << std::endl;
                 std::cout << "Hotkey ID: " << (msg.lParam >> 16) << std::endl;
                 #endif
+
+                // Here we detect if the user holds down a number hotkey.
+                // If he does for long enough, we simulate a real hotkey press.
 
                 numberHotkeyFallthrough = 0;
                 pressOriginalKey((msg.lParam >> 16), (msg.lParam >> 16));
