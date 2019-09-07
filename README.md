@@ -12,7 +12,7 @@
    * ```uninstall.bat``` removes the program from the autostart folder.
 
 ## Notes:
-This is a proof of concept. Sometimes it doesn't detect keypresses right, I am working on it.
+This is a proof of concept. Bugs may occur.
 
 Due to the technology this program uses, some Antivirus programs may detect it as malware.
 
