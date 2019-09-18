@@ -6,6 +6,7 @@
   * The default *CTRL+C* still works.
   * Use *CTRL+C* plus any number key  (0-9, normal or numpad) to copy anything to a numbered clipboard
   * Use *CTRL+V* plus any number key  (0-9, normal or numpad) to paste content from a numbered clipboard
+  * In almost any text field, you can type *cbX* wherein *X* is any number key. This text will be replaced with the corresponding clipboard slot.
 * **Scripts:**
    * ```end.bat``` kills the running program.
    * ```install.bat``` copies the program to the autostart folder.
@@ -14,7 +15,7 @@
 ## Notes:
 This is a proof of concept. Bugs may occur.
 
-Due to the technology this program uses, some Antivirus programs may detect it as malware.
+Due to the way this program works (using keyboard hooks and such), some Antivirus programs may detect it as malware.
 
 For best results, you may press *CTRL* and any number key and then add the *C*, *X*, or *V* key.
 

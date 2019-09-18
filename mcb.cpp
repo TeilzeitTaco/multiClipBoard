@@ -17,6 +17,11 @@
 
 #include "Windows.h"
 
+
+char* clipboardSlots[10] = {0}; // This array holds our clipboard strings
+bool usedSlots[10] = {false};   // This array is used to tell which slots already have content
+
+
 // Does what it says. Duh.
 char* readClipboard(void) {
     while(!OpenClipboard(NULL)) {
@@ -37,7 +42,7 @@ char* readClipboard(void) {
     strcpy(returnedBuffer, clipboardText);
 
     #ifdef TEST_VERSION
-    std::cout << "Reading string from clipboard: " << returnedBuffer << std::endl;
+    std::cout << "[CLIPBOARD]: Reading string from clipboard: " << returnedBuffer << std::endl;
     #endif
 
     return returnedBuffer;
@@ -49,7 +54,7 @@ unsigned int writeClipboard(char clipboardText[]) {
     HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, len);
 
     #ifdef TEST_VERSION
-    std::cout << "Writing string to clipboard: " << clipboardText << std::endl;
+    std::cout << "[CLIPBOARD]: Writing string to clipboard: " << clipboardText << std::endl;
     #endif
 
     memcpy(GlobalLock(hMem), clipboardText, len);
@@ -143,10 +148,123 @@ unsigned int pressOriginalKey(int hotkeyID, WORD vk) {
     return 0;
 }
 
-unsigned int main(void) {
-    char* clipboardSlots[10] = {0}; // This array holds our clipboard strings
-    bool usedSlots[10] = {false};   // This array is used to tell which slots already have content
 
+// Keyboard hook to detect replacement hotkeys
+LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
+    static unsigned int index = 0;
+    static BYTE stub[255] = {0};  // This just exists so we can call ToAscii.
+    static bool watching = false; // This gets set to one when the user presses the spacebar
+
+    static char* str = "cbX ";
+    static char* num = "0123456789";
+    static char slot = 0;
+
+    if ((nCode >= 0) && (wParam == WM_KEYDOWN)) {
+        KBDLLHOOKSTRUCT* pKeyBoard = (KBDLLHOOKSTRUCT *) lParam;
+        WORD conversionBuf = 0;
+
+        ToAscii(pKeyBoard->vkCode, pKeyBoard->scanCode, stub, &conversionBuf, 0);
+        char real = 0;
+        real = static_cast<char>(conversionBuf);
+
+        // The user pressed space, now we have to watch if the entered string is
+        // one of our strings.
+        if (((real == 0x20) || (real == 0xD)) && (!watching)) {
+            #ifdef TEST_VERSION
+            std::cout << "[KBDHOOK]: Space or Enter was pressed, start watching..." << std::endl;
+            #endif
+
+            watching = true;
+            return 0;
+        }
+
+        if (!watching) {
+            return 0;
+        }
+
+        // Check if we got the right char.
+        if (index == 2) {
+            if (strchr(num, real) == NULL) {
+                #ifdef TEST_VERSION
+                std::cout << "[KBDHOOK]: Number key mismatch. Restarting." << std::endl;
+                #endif
+
+                watching = false;
+                index = 0;
+                return 0;
+            }
+
+            slot = real-0x30;
+        } else {
+            if (str[index] != real) {
+                #ifdef TEST_VERSION
+                std::cout << "[KBDHOOK]: Key mismatch. Restarting." << std::endl;
+                #endif
+
+                watching = false;
+                index = 0;
+                return 0;
+            }
+        }
+
+        if (index < strlen(str)-1) {
+            #ifdef TEST_VERSION
+            std::cout << "[KBDHOOK]: Sucess, incrementing." << std::endl;
+            #endif
+
+            index++;
+            return 0;
+        }
+
+        #ifdef TEST_VERSION
+        std::cout << "[KBDHOOK]: Sucess, shortcut phrase entered." << std::endl;
+        std::cout << "[KBDHOOK]: Now pasting slot " << static_cast<unsigned int>(slot) << std::endl;
+        #endif
+
+        // Press backspace four times to
+        // delete the entered shortcut
+        BlockInput(true);
+        for (size_t i = 0; i < 3; i++) {
+            // Inject keypresses
+            INPUT ip;
+            ip.type = INPUT_KEYBOARD;
+            ip.ki.wScan = 0;
+            ip.ki.time = 0;
+            ip.ki.dwExtraInfo = 0;
+
+            // Press backspace key
+            ip.ki.wVk = VK_BACK;
+            ip.ki.dwFlags = 0;
+            SendInput(1, &ip, sizeof(INPUT));
+
+            Sleep(50);
+        }
+        BlockInput(false);
+
+        // Nothing to paste.
+        if (!usedSlots[slot]) { return 1; }
+
+        // Save current clipboard to restore it later
+        char* clipboardRestoreBuf = 0;
+        clipboardRestoreBuf = readClipboard();
+
+        // Write slot contents to clipboard and paste it.
+        writeClipboard(clipboardSlots[slot]);
+        if (pressOriginalKey(3, 0x56) == ERROR_VAL) { return 1; }
+
+        // Restore the old clipboard
+        writeClipboard(clipboardRestoreBuf);
+        free(clipboardRestoreBuf);
+
+        watching = true;
+        index = 0;
+        return 0;
+    }
+
+    return CallNextHookEx(NULL, nCode, wParam, lParam);
+}
+
+unsigned int main(void) {
     #ifndef TEST_VERSION
     if (hideWindow() == ERROR_VAL) { return 1; }
     #endif
@@ -157,7 +275,7 @@ unsigned int main(void) {
     if (!RegisterHotKey(NULL, 3, MOD_CONTROL, 0x56)) { return 1; }
 
     #ifdef TEST_VERSION
-    std::cout << "C/X/V Hotkeys created." << std::endl;
+    std::cout << "[MAIN]: C/X/V Hotkeys created." << std::endl;
     #endif
 
     // Create number hotkeys.
@@ -166,7 +284,18 @@ unsigned int main(void) {
     }
 
     #ifdef TEST_VERSION
-    std::cout << "Number hotkeys created." << std::endl;
+    std::cout << "[MAIN]: Number hotkeys created." << std::endl;
+    #endif
+
+    // Install keyboard hook
+    HINSTANCE hExe = GetModuleHandle(NULL);
+    if (!hExe) { return 1; }
+
+    HHOOK hKeyHook = SetWindowsHookEx(WH_KEYBOARD_LL, (HOOKPROC) LowLevelKeyboardProc, hExe, 0);
+    if (!hKeyHook) { return 1; }
+
+    #ifdef TEST_VERSION
+    std::cout << "[MAIN]: Keyboard hook installed." << std::endl;
     #endif
 
     MSG msg = {0};
@@ -177,7 +306,7 @@ unsigned int main(void) {
     while (GetMessage(&msg, NULL, 0, 0) != 0) {
         if (msg.message == WM_HOTKEY) {
             #ifdef TEST_VERSION
-            std::cout << "Processing lParam: " << msg.lParam << std::endl;
+            std::cout << "[HOTKEY]: Processing lParam: " << msg.lParam << std::endl;
             #endif
 
             unsigned int number = getNumber();
@@ -196,7 +325,7 @@ unsigned int main(void) {
 
                 if ((msg.lParam != countingWithlParam) || (countingWithlParam == 0)) {
                     #ifdef TEST_VERSION
-                    std::cout << "Setting new countingWithlParam." << std::endl;
+                    std::cout << "[HOTKEY]: Setting new countingWithlParam." << std::endl;
                     #endif
 
                     numberHotkeyFallthrough = 0;
@@ -205,7 +334,7 @@ unsigned int main(void) {
 
                 if (numberHotkeyFallthrough < FALLTROUGH_DELAY) {
                     #ifdef TEST_VERSION
-                    std::cout << "Increasing fallthrough counter to " << static_cast<int>(numberHotkeyFallthrough)+1 << std::endl;
+                    std::cout << "[HOTKEY]: Increasing fallthrough counter to " << static_cast<int>(numberHotkeyFallthrough)+1 << std::endl;
                     #endif
 
                     numberHotkeyFallthrough++;
@@ -213,8 +342,8 @@ unsigned int main(void) {
                 }
 
                 #ifdef TEST_VERSION
-                std::cout << "Number hotkey fallthrough triggered!" << std::endl;
-                std::cout << "Hotkey ID: " << (msg.lParam >> 16) << std::endl;
+                std::cout << "[HOTKEY]: Number hotkey fallthrough triggered!" << std::endl;
+                std::cout << "[HOTKEY]: Hotkey ID: " << (msg.lParam >> 16) << std::endl;
                 #endif
 
                 // Here we detect if the user holds down a number hotkey.
@@ -231,9 +360,9 @@ unsigned int main(void) {
                 case 4390914: // CTRL+C lParam int
                 #ifdef TEST_VERSION
                 if (msg.lParam == 4390914) {
-                    std::cout << "Ctrl+C and " << number << std::endl;
+                    std::cout << "[HOTKEY]: Ctrl+C and " << number << std::endl;
                 } else {
-                    std::cout << "Ctrl+X and " << number << std::endl;
+                    std::cout << "[HOTKEY]: Ctrl+X and " << number << std::endl;
                 }
                 #endif
 
@@ -264,7 +393,7 @@ unsigned int main(void) {
                 // Free memory if the slot was previously used
                 if (usedSlots[number]) {
                     #ifdef TEST_VERSION
-                    std::cout << "Freeing slots..." << std::endl;
+                    std::cout << "[HOTKEY]: Freeing slot..." << std::endl;
                     #endif
 
                     free(clipboardSlots[number]);
@@ -275,7 +404,7 @@ unsigned int main(void) {
                 strcpy(clipboardSlots[number], newSlotBuf);
 
                 #ifdef TEST_VERSION
-                std::cout << "Slot now contains: " << clipboardSlots[number] << std::endl;
+                std::cout << "[HOTKEY]: Slot now contains: " << clipboardSlots[number] << std::endl;
                 #endif
 
                 // Restore the old clipboard
@@ -286,7 +415,7 @@ unsigned int main(void) {
                 ////////////////////////////////////////////////////////////////
                 case 5636098: // CTRL+V lParam int
                 #ifdef TEST_VERSION
-                std::cout << "Ctrl+V and " << number << std::endl;
+                std::cout << "[HOTKEY]: Ctrl+V and " << number << std::endl;
                 #endif
 
                 numberHotkeyFallthrough = 0;
